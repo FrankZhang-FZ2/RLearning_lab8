@@ -1,40 +1,206 @@
 ---
 title: "Lab 08 - University of Edinburgh Art Collection"
-author: "Insert your name here"
-date: "Insert date here"
-output: github_document
+author: "Qilin Zhang"
+date: "3/14/2023"
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ### Load packages and data
 
 ```{r load-packages, message = FALSE}
-library(tidyverse) 
+library(tidyverse)
+library(tibble)
 library(skimr)
+library(rvest)
 ```
 
 ```{r load-data, message = FALSE, eval = FALSE}
+
 # Remove eval = FALSE or set it to TRUE once data is ready to be loaded
-uoe_art <- read_csv("data/uoe-art.csv")
+
+first_url <- "https://collections.ed.ac.uk/art/search/*:*/Collection:%22edinburgh+college+of+art%7C%7C%7CEdinburgh+College+of+Art%22?offset=0"
+page <- read_html(first_url)
+
+titles <- page %>%
+  html_nodes(".iteminfo") %>%
+  html_node("h3 a") %>%
+  html_text() %>%
+  str_squish()
+
 ```
+
+### Exercise 1
+
+```{r fix_links}
+
+Links <- page %>%
+  html_nodes(".iteminfo") %>%   # same nodes
+  html_node("h3 a") %>%         # as before
+  html_attr("href") %>%
+  str_replace("./","https://collections.ed.ac.uk/art/")
+
+```
+### Exercise 2
+
+```{r artist_names}
+
+Artists_names <- page %>%
+  html_nodes(".artist") %>%
+  html_text() %>%
+  str_squish()
+
+```
+
+### Exercise 3
+
+```{r tibbles}
+#everything <- tibble(Artists_names= Artists_names,titles = titles, links = Links)
+
+  
+max_length <- max(length(Artists_names), length(titles), length(Links))
+Artists_names <- c(Artists_names, rep(NA, max_length - length(Artists_names)))
+titles <- c(titles, rep(NA, max_length - length(titles)))
+Links <- c(Links, rep(NA, max_length - length(Links)))
+
+everything <- tibble("Artists_names"= Artists_names,"titles" = titles, "links" = Links)
+  
+```
+
+### Exercise 4
+
+```{r second_url}
+second_url <- "https://collections.ed.ac.uk/art/search/*:*/Collection:%22edinburgh+college+of+art%7C%7C%7CEdinburgh+College+of+Art%22?offset=10"
+
+second_ten <- read_html(second_url)
+```
+
+### Exercise 5 + 6
+
+```{r scrape_function}
+scrape_page <- function(x){
+  y <- read_html(x)
+  #titles
+  titles <- y %>%
+  html_nodes(".iteminfo") %>%
+  html_node("h3 a") %>%
+  html_text() %>%
+  str_squish()
+  #Links
+  Links <- y %>%
+  html_nodes(".iteminfo") %>% 
+  html_node("h3 a") %>%         
+  html_attr("href") %>%
+  str_replace("./","https://collections.ed.ac.uk/art/")
+  #Artists_names
+  Artists_names <- y %>%
+  html_nodes(".artist") %>%
+  html_text() %>%
+  str_squish()
+  #combine
+  max_length <- max(length(Artists_names), length(titles), length(Links))
+  Artists_names <- c(Artists_names, rep(NA, max_length - length(Artists_names)))
+  titles <- c(titles, rep(NA, max_length - length(titles)))
+  Links <- c(Links, rep(NA, max_length - length(Links)))
+  df <- tibble("Artists_names"= Artists_names,"titles" = titles, "links" = Links)
+  return(df)
+}
+
+scrape_page(first_url)
+scrape_page(second_url)
+
+rm(page,titles,Links,Artists_names)
+```
+
+### Exercise 7
+
+```{r URL_list}
+URL_list <- list("URL"=
+                     paste("https://collections.ed.ac.uk/art/search/*:*/Collection:%22edinburgh+college+of+art%7C%7C%7CEdinburgh+College+of+Art%22?offset=",
+                           seq(0,2900,by = 10),
+                           sep = ""
+                           )
+                   )
+URL_list <- unlist(URL_list)
+
+```
+
+### Exercise 8 
+
+```{r scrape_all_page}
+uoe_art<-map_dfr(URL_list,scrape_page)
+
+```
+
 
 ### Exercise 9
 
 ```{r separate-title-date, error = TRUE}
-uoe_art <- uoe_art %>%
-  separate(title, into = c("title", "date"), sep = "\\(") %>%
-  mutate(year = str_remove(date, "\\)") %>% as.numeric()) %>%
-  select(title, artist, year, ___)
+write.csv(uoe_art, "uoe_art")
 ```
 
 ### Exercise 10
 
-Remove this text, and add your answer for Exercise 10 here.
-Add code chunks as needed.
-Don't forget to label your code chunk.
-Do not use spaces in code chunk labels.
+```{r seperate_date}
+uoe_art <- read_csv("uoe_art.csv")
+uoe_art <- uoe_art %>%
+  separate(titles, into = c("titles", "date"), sep = "\\(") %>%
+  mutate(year = str_remove(date, "\\)") %>% as.numeric()) %>%
+  select(c(Artists_names,titles,links,year))
+
+```
+
 
 ### Exercise 11
 
-...
+```{r skim}
 
-Add exercise headings as needed.
+skim(uoe_art)
+```
+
+###Exercise 12
+
+```{r hist}
+
+uoe_art %>%
+  ggplot(aes(x=year))+
+  geom_histogram(binwidth = 1)
+#there is a piece that came from year 2. 
+```
+
+###Exercise 13
+
+```{r correction}
+uoe_art_R <- read_csv("uoe_art.csv")
+uoe_art_R <- uoe_art_R %>%
+  mutate(titles = 
+           case_when(titles == "Death Mask (2) (1964)" ~ "Death Mask [2] (1964)",
+                     titles != "Death Mask (2) (1964)" ~ titles))
+uoe_art_R <- uoe_art_R %>%
+  separate(titles, into = c("titles", "date"), sep = "\\(") %>%
+  mutate(year = str_remove(date, "\\)") %>% as.character()) %>%
+  select(c(Artists_names,titles,links,year))
+## :( I cannot figure out a good way to handle this
+```
+
+
+###Exercise 14
+
+Emma Gillies seems to be the person that contributes the most to this collection. She is a local and donate a lot of free arts. 
+
+```{r artist_count}
+uoe_art_R %>%
+  count(Artists_names)%>%
+  arrange(desc(n))
+```
+
+###Exercise 14
+
+
+```{r child}
+uoe_art_R %>%
+  filter(str_detect(titles, "Child"))
+
+##there is 10 in total
+```
